@@ -1,0 +1,25 @@
+language: go
+sudo: false
+go:
+    - 1.7.1
+    - tip
+before_install:
+    - # http://stackoverflow.com/questions/16989598/bash-comparing-version-numbers
+    - if [ ! $(cat VERSION | grep -P "[0-9]+\.[0-9]+\.[0-9]+$") ]; then echo "MALFORMED VERSION NUMBER" && exit 1;fi;
+    - current_version=$(git describe --tags --abbrev=0 2&>/dev/null | grep -qv latest);
+    - next_version="$(cat VERSION)"
+    - if [ "$current_version" != "" ] && [ ! $(version_gt next_version current_version) ]; then echo "VERSION NEEDS TO INCREMENT && exit 1"; fi; 
+    - go get github.com/mitchellh/gox
+    - go get github.com/tcnksm/ghr
+script:
+    - APP_VERSION="v$(cat VERSION)"
+    - RELEASE_CANDIDATE="$(($(git tag -l "${APP_VERSION}*" | wc -l) + 1))"
+    - if [ "$TRAVIS_BRANCH" == "develop" ]; then APP_VERSION="${APP_VERSION}-dev; fi;"
+    - if [ "$TRAVIS_BRANCH" == "release" ]; then APP_VERSION="${APP_VERSION}-${RELEASE_CANDIDATE}; fi;"
+    - if [ "$TRAVIS_BRANCH" == "master" ]; then APP_VERSION="${APP_VERSION}; fi;"
+    - if [[ ! "master release develop" =~ "deveop" ]]; then APP_VERSION="$(git describe)"; fi;
+    - go build -ldflags "-X main.BuildTime=`date -u '+%Y-%m-%d_%I:%M:%S%p'` -X main.CommitHash=`git rev-parse HEAD` -X main.Version=\"${APP_VERSION}\""
+after_success:
+    - gox -output "dist/{{.OS}}_{{.Arch}}_{{.Dir}}"
+    - if [ "$TRAVIS_BRANCH" == "develop" ]; then ghr -username reaandrew -token $GITHUB_TOKEN -recreate --prerelease --debug "latest" dist/; fi;
+    - if [ "$TRAVIS_BRANCH" == "release" ]; then ghr -username reaandrew -token $GITHUB_TOKEN -recreate --prerelease --debug "${RELEASE_CANDIDATE}" dist/; fi;
